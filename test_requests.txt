@@ -1,0 +1,10 @@
+GET /alphabet.txt HTTP/1.1
+
+GET /reverse.txt HTTP/1.1
+
+GET /chunked.txt HTTP/1.1
+
+GET /cached.txt HTTP/1.1
+
+GET /stats.txt HTTP/1.1
+

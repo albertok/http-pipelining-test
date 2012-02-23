@@ -43,7 +43,7 @@ class RequestParser(object):
   LOOKING_FOR_GET = 1
   READING_HEADERS = 2
 
-  HEADER_RE = re.compile('([^:]+):(.+)\r\n')
+  HEADER_RE = re.compile('([^:]+):(.*)\r\n')
   REQUEST_RE = re.compile('([^ ]+) ([^ ]+) HTTP/(\d+)\.(\d+)\r\n')
 
   def __init__(self):
@@ -197,9 +197,9 @@ class ResponseBuilder(object):
       elif path == '/stats.txt':
         results = {
             'max_pipeline_depth': self._max_pipeline_depth,
-            'were_all_requests_http_1_1': self._were_all_requests_http_1_1,
+            'were_all_requests_http_1_1': int(self._were_all_requests_http_1_1),
         }
-        body = str(results)
+        body = ','.join(['%s:%s' % (k, v) for k, v in results.items()])
         result += self._BuildResponse(
             '200 OK',
             ['Content-Length: %s' % len(body), 'Cache-Control: no-store'], body)
@@ -271,8 +271,7 @@ class PipelineRequestHandler(SocketServer.BaseRequestHandler):
         max_poll_time = min(time_left, time_until_next_send)
 
         events = None
-        if max_poll_time > 0:
-          print 'epoll %s' % max_poll_time
+        if max_poll_time > 0.01:
           if self._send_buffer:
             poller.modify(self.request.fileno(),
                           select.EPOLLIN | select.EPOLLOUT)
@@ -280,35 +279,28 @@ class PipelineRequestHandler(SocketServer.BaseRequestHandler):
             poller.modify(self.request.fileno(), select.EPOLLIN)
           events = poller.poll(timeout=max_poll_time)
 
-        if self._GetTimeUntilTimeout() <= 0:
-          print 'timing out'
+        if self._GetTimeUntilTimeout() <= 0.01:
           return
 
-        if self._GetTimeUntilNextSend() <= 0:
-          print 'buffering'
+        if self._GetTimeUntilNextSend() <= 0.01:
           self._send_buffer += self._response_builder.BuildResponses()
           self._num_written = self._num_queued
           self._last_queued_time = 0
 
         for fd, mode in events:
           if mode & select.EPOLLIN:
-            print 'reading'
             new_data = self.request.recv(MAX_REQUEST_SIZE, socket.MSG_DONTWAIT)
             if not new_data:
-              print 'no data'
               return
             new_requests = self._request_parser.ParseAdditionalData(new_data)
             self._response_builder.QueueRequests(
                 new_requests, self._request_parser.were_all_requests_http_1_1)
             self._num_queued += len(new_requests)
             self._last_queued_time = time.time()
-            print 'queued %s' % len(new_requests)
           elif mode & select.EPOLLOUT:
-            print 'writing'
             num_bytes_sent = self.request.send(self._send_buffer)
             self._send_buffer = self._send_buffer[num_bytes_sent:]
           else:
-            print 'error %d' % mode
             return
 
     except RequestTooLargeError as e:
