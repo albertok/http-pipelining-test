@@ -20,7 +20,10 @@ import select
 import socket
 import time
 
-MAX_REQUEST_SIZE = 1024
+MAX_REQUEST_SIZE = 1024  # bytes
+MIN_POLL_TIME = 0.01  # seconds. Minimum time to poll, in order to prevent
+                      # excessive looping because Python refuses to poll for
+                      # small timeouts.
 SEND_BUFFER_TIME = 3  # seconds
 TIMEOUT = 10  # seconds
 
@@ -43,8 +46,8 @@ class RequestParser(object):
   LOOKING_FOR_GET = 1
   READING_HEADERS = 2
 
-  HEADER_RE = re.compile('([^:]+):(.*)\r\n')
-  REQUEST_RE = re.compile('([^ ]+) ([^ ]+) HTTP/(\d+)\.(\d+)\r\n')
+  HEADER_RE = re.compile('([^:]+):(.*)\n')
+  REQUEST_RE = re.compile('([^ ]+) ([^ ]+) HTTP/(\d+)\.(\d+)\n')
 
   def __init__(self):
     """Initializer."""
@@ -71,7 +74,7 @@ class RequestParser(object):
       UnexpectedMethodError: On a non-GET method.
       Error: On a programming error.
     """
-    self._buffer += data
+    self._buffer += data.replace('\r', '')
     should_continue_parsing = True
     while should_continue_parsing:
       if self._state == self.LOOKING_FOR_GET:
@@ -122,8 +125,8 @@ class RequestParser(object):
     Returns:
       (Boolean) True if it found the end of the request or a HTTP header.
     """
-    if self._buffer.startswith('\r\n'):
-      self._buffer = self._buffer[2:]
+    if self._buffer.startswith('\n'):
+      self._buffer = self._buffer[1:]
       self._state = self.LOOKING_FOR_GET
       self._valid_requests.append((self._pending_request,
                                    self._pending_headers))
@@ -135,7 +138,10 @@ class RequestParser(object):
     if not m:
       return False
 
-    self._pending_headers[m.group(1).lower()] = m.group(2).strip().lower()
+    header = m.group(1).lower()
+    value = m.group(2).strip().lower()
+    if header not in self._pending_headers:
+      self._pending_headers[header] = value
     self._buffer = self._buffer[m.end():]
     return True
 
@@ -268,10 +274,10 @@ class PipelineRequestHandler(SocketServer.BaseRequestHandler):
 
         time_left = self._GetTimeUntilTimeout()
         time_until_next_send = self._GetTimeUntilNextSend()
-        max_poll_time = min(time_left, time_until_next_send)
+        max_poll_time = min(time_left, time_until_next_send) + MIN_POLL_TIME
 
         events = None
-        if max_poll_time > 0.01:
+        if max_poll_time > 0:
           if self._send_buffer:
             poller.modify(self.request.fileno(),
                           select.EPOLLIN | select.EPOLLOUT)
@@ -279,10 +285,10 @@ class PipelineRequestHandler(SocketServer.BaseRequestHandler):
             poller.modify(self.request.fileno(), select.EPOLLIN)
           events = poller.poll(timeout=max_poll_time)
 
-        if self._GetTimeUntilTimeout() <= 0.01:
+        if self._GetTimeUntilTimeout() <= 0:
           return
 
-        if self._GetTimeUntilNextSend() <= 0.01:
+        if self._GetTimeUntilNextSend() <= 0:
           self._send_buffer += self._response_builder.BuildResponses()
           self._num_written = self._num_queued
           self._last_queued_time = 0
