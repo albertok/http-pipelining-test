@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import SocketServer
+import optparse
 import re
 import select
 import socket
@@ -326,7 +327,12 @@ class PipelineServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
   pass
 
 
-server = PipelineServer(('127.0.0.1', 0), PipelineRequestHandler)
+parser = optparse.OptionParser()
+parser.add_option("-p", "--port", action="store", dest="port", default=0,
+                  type="int", help="port to listen on")
+options, args = parser.parse_args()
+
+server = PipelineServer(('0.0.0.0', options.port), PipelineRequestHandler)
 print server.server_address
 server.allow_reuse_address = True
 server.serve_forever()
