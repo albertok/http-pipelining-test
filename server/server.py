@@ -21,6 +21,17 @@ import select
 import socket
 import time
 
+INFO_MESSAGE = '''
+This is a test server operated by Google. It's used by Google Chrome to test
+proxies for compatibility with HTTP pipelining. More information can be found
+here:
+
+http://dev.chromium.org/developers/design-documents/network-stack/http-pipelining
+
+Source code can be found here:
+
+http://code.google.com/p/http-pipelining-test/
+'''
 MAX_REQUEST_SIZE = 1024  # bytes
 MIN_POLL_TIME = 0.01  # seconds. Minimum time to poll, in order to prevent
                       # excessive looping because Python refuses to poll for
@@ -34,6 +45,10 @@ class Error(Exception):
 
 
 class RequestTooLargeError(Error):
+  pass
+
+
+class ServeIndexError(Error):
   pass
 
 
@@ -111,6 +126,8 @@ class RequestParser(object):
 
     if method != 'GET':
       raise UnexpectedMethodError('Unexpected method: ' + method)
+    if path in ['/', '/index.htm', '/index.html']:
+      raise ServeIndexError()
 
     if http_major != '1' or http_minor != '1':
       self._were_all_requests_http_1_1 = False
@@ -226,7 +243,8 @@ class ResponseBuilder(object):
     Returns:
       (String) Text of HTTP response.
     """
-    return self._BuildResponse(status, ['Connection: close'], '')
+    return self._BuildResponse(
+        status, ['Connection: close', 'Content-Type: text/plain'], error)
 
   @property
   def processed_end(self):
@@ -318,6 +336,9 @@ class PipelineRequestHandler(SocketServer.BaseRequestHandler):
       self.request.send(self._response_builder.WriteError(
           '405 Method Not Allowed', e))
       raise
+    except ServeIndexError:
+      self.request.send(self._response_builder.WriteError(
+          '200 OK', INFO_MESSAGE))
     except Exception as e:
       print e
     self.request.close()
