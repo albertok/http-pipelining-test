@@ -36,8 +36,8 @@ MAX_REQUEST_SIZE = 1024  # bytes
 MIN_POLL_TIME = 0.01  # seconds. Minimum time to poll, in order to prevent
                       # excessive looping because Python refuses to poll for
                       # small timeouts.
-SEND_BUFFER_TIME = 3  # seconds
-TIMEOUT = 10  # seconds
+SEND_BUFFER_TIME = 5  # seconds
+TIMEOUT = 20  # seconds
 
 
 class Error(Exception):
