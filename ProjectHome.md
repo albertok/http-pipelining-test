@@ -1,0 +1,1 @@
+Provides a test server that buffers HTTP requests and responses in a way that's likely to tickle HTTP pipelining bugs in clients and proxies.
